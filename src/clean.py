@@ -36,7 +36,7 @@ clean_report.add_record('Parse Datetime')
 # 规范文本
 df['StockCode'] = df['StockCode'].str.strip().str.upper()
 df['Description'] = df['Description'].str.strip().str.title()
-df['Country'] = df['Description'].str.strip().str.title()
+df['Country'] = df['Country'].str.strip().str.title()
 clean_report.add_record('Format Texts')
 
 # 取消单和调账单共 9,291 行，RFM 应该排除
