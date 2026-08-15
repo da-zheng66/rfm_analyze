@@ -19,19 +19,31 @@
 
 最终输出可以直接支撑用户运营和营销资源分配决策。
 
+## 数据集
+[`Online_Retail.csv`](https://www.kaggle.com/datasets/tunguz/online-retail):
+```
+InvoiceNo,StockCode,Description,Quantity,InvoiceDate,UnitPrice,CustomerID,Country
+536365,85123A,WHITE HANGING HEART T-LIGHT HOLDER,6,12/1/10 8:26,2.55,17850,United Kingdom
+536365,71053,WHITE METAL LANTERN,6,12/1/10 8:26,3.39,17850,United Kingdom
+536365,84406B,CREAM CUPID HEARTS COAT HANGER,8,12/1/10 8:26,2.75,17850,United Kingdom
+...
+```
+该数据集存在以下问题：
+- `InvoiceDate` 以 `12/1/10 8:26` 等字符串形式存储，需要解析为日期时间类型。
+- `CustomerID` 缺失 135,080 行，约占原始数据的 24.9%，这些记录无法归因到具体客户。
+- 5,268 行完全重复，需要去重。
+- `InvoiceNo` 以 `C` 开头表示取消订单，共 9,288 行；另有 3 行 `A` 开头调账记录，不能作为正常成交数据。
+- `Quantity` 存在 10,624 条负值，代表退货；`UnitPrice` 存在 2 条负值和 2,515 条 0 值。
+- 部分 `StockCode` 是非商品代码，例如 `POST`、`DOT`、`M`，需要在分析前识别并剔除。
+- `Description` 存在 1,454 条缺失，且文本格式不统一。
+- `Country` 包含 38 个国家，其中存在 `Unspecified`，需要根据分析目标决定是否保留。
+
+
 ## 核心成果
 
-| 指标 | 结果 |
-| --- | ---: |
-| 原始交易记录 | 541,909 条 |
-| 清洗后有效交易记录 | 约 391,150 条 |
-| 有效客户数 | 4,334 人 |
-| 客户价值群体 | 8 类 |
-| 高价值沉睡客户 | 8 人 |
-| 前 20% 客户收入贡献 | 74.6% |
-| 前 50% 客户收入贡献 | 92.2% |
+![部分截图](./assets/report_preview.png)
 
-
+[点击此处预览完整的可视化报告](https://html-preview.github.io/?url=https://github.com/da-zheng66/rfm_analyze/blob/main/outputs/rfm_report.html)
 
 ## 业务价值
 
