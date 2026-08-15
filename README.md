@@ -1,3 +1,5 @@
+![部分截图](./assets/report_preview.png)
+
 # 电商客户价值分层与 RFM 分析
 
 > 从 54 万条原始交易明细，到可执行的客户分层、召回名单与经营仪表盘。
@@ -40,8 +42,6 @@ InvoiceNo,StockCode,Description,Quantity,InvoiceDate,UnitPrice,CustomerID,Countr
 
 
 ## 核心成果
-
-![部分截图](./assets/report_preview.png)
 
 [点击此处预览完整的可视化报告](https://html-preview.github.io/?url=https://github.com/da-zheng66/rfm_analyze/blob/main/outputs/rfm_report.html)
 
