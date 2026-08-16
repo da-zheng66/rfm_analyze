@@ -1,42 +1,73 @@
 # Online Retail RFM 分析配置
+# 所有路径均相对于项目根目录。
 
 [paths]
+# 原始数据目录，用于保存从 Kaggle 下载的 CSV。
 raw_dir = "data/raw"
+# 中间数据目录，用于保存清洗后的 Parquet 和数据质量报告。
 interim_dir = "data/interim"
+# 结果数据目录，用于保存 RFM、分层和沉睡客户结果。
 processed_dir = "data/processed"
+# 最终输出目录，用于保存 HTML 报告等文件。
 output_dir = "outputs"
 
 [files]
+# Kaggle 下载后的原始 CSV 文件名。
 raw = "Online_Retail.csv"
+# pandas 清洗后输出的 Parquet 文件名。
 cleaned = "cleaned_online_retail.parquet"
+# 数据清洗过程中生成的质量报告文件名。
 quality_report = "数据质量报告.csv"
+# 完整 RFM 明细结果文件名。
 rfm = "rfm.csv"
+# 8 类客户分层的聚合统计文件名。
 rfm_stats = "rfm_stats.csv"
+# 高价值沉睡客户名单文件名。
 top_dormant = "top5_dormant.csv"
+# 最终生成的可视化报告文件名。
 html_report = "rfm_report.html"
+# 预留的 PNG 报告文件名。
 png_report = "rfm_report.png"
 
 [dataset]
+# Kaggle 数据集标识，用于 kagglehub 下载。
 slug = "tunguz/online-retail"
+# 原始 CSV 文件编码，Online Retail 数据通常为 latin1。
 encoding = "latin1"
+# InvoiceDate 字段的原始日期时间格式。
 date_format = "%m/%d/%y %H:%M"
+# 清洗完成后用于建立索引的列。
 index_columns = ["InvoiceNo", "StockCode"]
 
 [cleaning]
+# 有效 StockCode 的正则表达式，用于过滤非商品代码。
 valid_stock_code_pattern = "^[0-9]+[A-Z]*$"
+# 是否在清洗阶段删除完全重复的行。
 drop_duplicates = true
 
 [rfm]
+# RFM 分数使用 NTILE 划分的分桶数量。
 tiles = 6
+# 计算 Recency 时使用的参考日期，应晚于数据集中最大交易日期。
 base_date = "2011-12-10"
+# R 分数达到该阈值时视为高活跃客户。
 r_threshold = 3
+# F 分数达到该阈值时视为高频客户。
 f_threshold = 3
+# M 分数达到该阈值时视为高价值客户。
 m_threshold = 5
+# 判断客户是否沉睡的最小天数。
 dormant_recency_days = 90
+# 判断高价值客户时使用的金额百分位阈值，0.05 表示前 5%。
 dormant_monetary_percentile = 0.05
 
 [report]
+# 散点图最多使用的采样客户数量。
 scatter_sample_size = 650
+# 散点图采样时的随机种子，保证结果可复现。
 scatter_random_state = 42
+# 分布直方图使用的分箱数量。
 histogram_bins = 10
+# 预留的 HTML 转 PNG 时的缩放比例。
 png_scale = 2.0
+

@@ -85,22 +85,24 @@ app_config.toml
 
 ```toml
 [paths]
+# 原始数据目录，用于保存从 Kaggle 下载的 CSV。
 raw_dir = "data/raw"
+# 中间数据目录，用于保存清洗后的 Parquet 和数据质量报告。
 interim_dir = "data/interim"
+# 结果数据目录，用于保存 RFM、分层和沉睡客户结果。
 processed_dir = "data/processed"
-output_dir = "outputs"
 
 [rfm]
+# RFM 分数使用 NTILE 划分的分桶数量。
 tiles = 6
-base_date = "2011-12-10"
-r_threshold = 4
-f_threshold = 4
-m_threshold = 6
-dormant_recency_days = 90
-dormant_monetary_percentile = 0.05
+# R 分数达到该阈值时视为高活跃客户。
+r_threshold = 3
+# F 分数达到该阈值时视为高频客户。
+f_threshold = 3
+# M 分数达到该阈值时视为高价值客户。
+m_threshold = 5
+...
 ```
-
-通过 `src/config.py` 中的 `cfg()` 获取全局惰性单例，各模块不再散落硬编码参数。
 
 ## 运行方式
 
