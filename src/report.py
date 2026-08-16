@@ -1,16 +1,18 @@
+"""Generate the RFM business report as a self-contained HTML dashboard."""
+
 from __future__ import annotations
 
 from datetime import datetime
 from html import escape
 from math import log10, sqrt
 from pathlib import Path
+from src.config import cfg
 
 import numpy as np
 import pandas as pd
 
 
-PROCESSED_DIR = Path("data/processed")
-OUTPUT_PATH = Path("outputs/rfm_report.html")
+TOP_CUSTOMERS_COUNT = 10
 
 SEGMENT_ORDER = [
     "重要价值用户",
@@ -576,11 +578,12 @@ footer {
 
 
 class RFMReport:
-    def __init__(self, processed_dir: Path = PROCESSED_DIR) -> None:
-        self.processed_dir = processed_dir
-        self.rfm = self._read("rfm.csv")
-        self.stats = self._read("rfm_stats.csv")
-        self.dormant = self._read("top5_dormant.csv")
+    def __init__(self, processed_dir: str | Path | None = None) -> None:
+        config = cfg()
+        self.processed_dir = Path(processed_dir or config.paths.processed_dir)
+        self.rfm = self._read(config.files.rfm)
+        self.stats = self._read(config.files.rfm_stats)
+        self.dormant = self._read(config.files.top_dormant)
         self.generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._prepare()
 
@@ -590,14 +593,24 @@ class RFMReport:
         return frame.drop(columns=["Unnamed: 0"], errors="ignore")
 
     def _prepare(self) -> None:
+        self._prepare_rfm_columns()
+        self._prepare_segment_stats()
+        self._prepare_summary_metrics()
+        self._prepare_dormant_metrics()
+
+    def _prepare_rfm_columns(self) -> None:
         self.rfm["customer_id"] = pd.to_numeric(
             self.rfm["customer_id"], errors="coerce"
         ).astype("Int64")
-        self.rfm["segment"] = self.rfm.apply(self._segment_for_row, axis=1)
+        if "customer_type" in self.rfm.columns:
+            self.rfm["segment"] = self.rfm["customer_type"].fillna("未分类")
+        else:
+            self.rfm["segment"] = self.rfm.apply(self._segment_for_row, axis=1)
         self.dormant["customer_id"] = pd.to_numeric(
             self.dormant["customer_id"], errors="coerce"
         ).astype("Int64")
 
+    def _prepare_segment_stats(self) -> None:
         self.stats = self.stats.set_index("customer_type")
         self.stats["segment_revenue"] = (
             self.stats["customers"] * self.stats["average_monetary"]
@@ -609,27 +622,31 @@ class RFMReport:
             self.stats["segment_revenue"] / self.stats["segment_revenue"].sum()
         )
 
+    def _prepare_summary_metrics(self) -> None:
         self.total_customers = int(len(self.rfm))
         self.total_monetary = float(self.rfm["monetary"].sum())
         self.average_monetary = float(self.rfm["monetary"].mean())
         self.median_monetary = float(self.rfm["monetary"].median())
         self.average_recency = float(self.rfm["recency_days"].mean())
         self.average_frequency = float(self.rfm["frequency"].mean())
-
-        dormant = self.rfm[
-            (self.rfm["recency_days"] > 90) & (self.rfm["m_rank"] <= 0.05)
-        ]
-        self.dormant_count = int(len(dormant))
-        self.dormant_revenue = float(dormant["monetary"].sum())
         self.top20_share = self._top_share(0.2)
         self.top50_share = self._top_share(0.5)
 
+    def _prepare_dormant_metrics(self) -> None:
+        dormant = self.rfm[
+            (self.rfm["recency_days"] > cfg().rfm.dormant_recency_days)
+            & (self.rfm["m_rank"] <= cfg().rfm.dormant_monetary_percentile)
+        ]
+        self.dormant_count = int(len(dormant))
+        self.dormant_revenue = float(dormant["monetary"].sum())
+
     @staticmethod
     def _segment_for_row(row: pd.Series) -> str:
+        config = cfg()
         code = (
-            4 * (int(row["r_score"]) - 1)
-            + 2 * (int(row["f_score"]) - 1)
-            + (int(row["m_score"]) - 1)
+            4 * int(int(row["r_score"]) >= config.rfm.r_threshold)
+            + 2 * int(int(row["f_score"]) >= config.rfm.f_threshold)
+            + int(int(row["m_score"]) >= config.rfm.m_threshold)
         )
         return SEGMENT_BY_CODE.get(code, "未分类")
 
@@ -669,8 +686,11 @@ class RFMReport:
 </html>
 """
 
-    def save(self, output_path: Path = OUTPUT_PATH) -> Path:
-        output_path = Path(output_path)
+    def save(self, output_path: str | Path | None = None) -> Path:
+        config = cfg()
+        output_path = Path(
+            output_path or Path(config.paths.output_dir, config.files.html_report)
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(self.render(), encoding="utf-8")
         return output_path
@@ -692,11 +712,31 @@ class RFMReport:
 
     def _render_metrics(self) -> str:
         metrics = [
-            ("客户总数", self._fmt_int(self.total_customers), "完成 RFM 打分的唯一客户"),
-            ("总消费金额", self._fmt_money(self.total_monetary), f"中位数 {self._fmt_money(self.median_monetary)}"),
-            ("平均购买频次", self._fmt_decimal(self.average_frequency, 1), "订单 / 客户"),
-            ("平均沉睡天数", self._fmt_int(int(self.average_recency)), "距最后一次交易"),
-            ("高价值沉睡客户", self._fmt_int(self.dormant_count), f"沉睡收入 {self._fmt_money(self.dormant_revenue)}"),
+            (
+                "客户总数",
+                self._fmt_int(self.total_customers),
+                "完成 RFM 打分的唯一客户",
+            ),
+            (
+                "总消费金额",
+                self._fmt_money(self.total_monetary),
+                f"中位数 {self._fmt_money(self.median_monetary)}",
+            ),
+            (
+                "平均购买频次",
+                self._fmt_decimal(self.average_frequency, 1),
+                "订单 / 客户",
+            ),
+            (
+                "平均沉睡天数",
+                self._fmt_int(int(self.average_recency)),
+                "距最后一次交易",
+            ),
+            (
+                "高价值沉睡客户",
+                self._fmt_int(self.dormant_count),
+                f"沉睡收入 {self._fmt_money(self.dormant_revenue)}",
+            ),
         ]
         cards = "".join(
             f"""
@@ -763,7 +803,7 @@ class RFMReport:
           <th>贡献度</th>
         </tr>
       </thead>
-      <tbody>{''.join(rows)}</tbody>
+      <tbody>{"".join(rows)}</tbody>
     </table>
   </div>
 </section>
@@ -793,7 +833,7 @@ class RFMReport:
       <h2>重点策略建议</h2>
     </div>
   </div>
-  <div class="strategy-list">{''.join(cards)}</div>
+  <div class="strategy-list">{"".join(cards)}</div>
 </section>
 """
 
@@ -813,7 +853,10 @@ class RFMReport:
 """
 
     def _render_scatter_svg(self) -> str:
-        sample = self.rfm.sample(n=min(650, len(self.rfm)), random_state=42)
+        sample = self.rfm.sample(
+            n=min(cfg().report.scatter_sample_size, len(self.rfm)),
+            random_state=cfg().report.scatter_random_state,
+        )
         width, height = 1000, 470
         left, right, top, bottom = 72, 28, 30, 62
         plot_w = width - left - right
@@ -830,7 +873,17 @@ class RFMReport:
         points = []
         for _, row in sample.iterrows():
             x = left + (row["recency_days"] / max_recency) * plot_w
-            y = top + (1 - ((log10(max(row["monetary"], 1)) - min_log) / (max_log - min_log or 1))) * plot_h
+            y = (
+                top
+                + (
+                    1
+                    - (
+                        (log10(max(row["monetary"], 1)) - min_log)
+                        / (max_log - min_log or 1)
+                    )
+                )
+                * plot_h
+            )
             radius = 3.5 + sqrt(row["frequency"] / max_freq) * 11
             segment = row["segment"]
             color = self._tone_color(SEGMENT_META.get(segment, {}).get("tone", "slate"))
@@ -863,10 +916,10 @@ class RFMReport:
   <style>
     .axis-label {{ fill: #7b8794; font-size: 12px; font-weight: 700; }}
   </style>
-  {''.join(grid_lines)}
+  {"".join(grid_lines)}
   <text x="{(left + (width - right)) / 2:.1f}" y="{height - 3}" text-anchor="middle" class="axis-label">沉睡天数（R）</text>
   <text x="18" y="{(top + height - bottom) / 2:.1f}" text-anchor="middle" class="axis-label" transform="rotate(-90 18 {(top + height - bottom) / 2:.1f})">消费金额（M，对数刻度）</text>
-  {''.join(points)}
+  {"".join(points)}
   {x_labels}
   {y_labels}
 </svg>
@@ -886,18 +939,18 @@ class RFMReport:
     ) -> str:
         if column == "monetary_log":
             values = np.log10(self.rfm["monetary"].clip(lower=1))
-            counts, edges = np.histogram(values, bins=10)
-            labels = [self._fmt_money(float(10 ** edge)) for edge in edges[:-1]]
+            counts, edges = np.histogram(values, bins=cfg().report.histogram_bins)
+            labels = [self._fmt_money(float(10**edge)) for edge in edges[:-1]]
         elif column == "frequency_log":
             values = np.log10(self.rfm["frequency"].clip(lower=1))
-            counts, edges = np.histogram(values, bins=10)
+            counts, edges = np.histogram(values, bins=cfg().report.histogram_bins)
             labels = [
                 f"{int(round(10 ** edges[i])):,}-{int(round(10 ** edges[i + 1])):,}"
                 for i in range(len(edges) - 1)
             ]
         else:
             values = self.rfm[column]
-            counts, edges = np.histogram(values, bins=10)
+            counts, edges = np.histogram(values, bins=cfg().report.histogram_bins)
             labels = [
                 f"{int(edges[i]):,}-{int(edges[i + 1]):,}"
                 for i in range(len(edges) - 1)
@@ -947,9 +1000,7 @@ class RFMReport:
         for segment, row in segments.iterrows():
             share = float(row["customers"]) / total
             end = start + share * 100
-            color = self._tone_color(
-                SEGMENT_META.get(segment, {}).get("tone", "slate")
-            )
+            color = self._tone_color(SEGMENT_META.get(segment, {}).get("tone", "slate"))
             gradient_parts.append(f"{color} {start:.2f}% {end:.2f}%")
             legend_items.append(
                 f"""
@@ -973,7 +1024,7 @@ class RFMReport:
   </div>
   <div class="donut-wrap">
     <div class="donut" style="background: conic-gradient({gradient}); white-space: pre-line;" data-label="客户总数\n{self._fmt_int(total)}"></div>
-    <div class="legend">{''.join(legend_items)}</div>
+    <div class="legend">{"".join(legend_items)}</div>
   </div>
 </section>
 """
@@ -1098,7 +1149,7 @@ class RFMReport:
           <th class="num">最大值</th>
         </tr>
       </thead>
-      <tbody>{''.join(rows)}</tbody>
+      <tbody>{"".join(rows)}</tbody>
     </table>
   </div>
 </section>
@@ -1106,24 +1157,35 @@ class RFMReport:
 
     def _render_dormant_profile(self) -> str:
         dormant = self.rfm[
-            (self.rfm["recency_days"] > 90) & (self.rfm["m_rank"] <= 0.05)
+            (self.rfm["recency_days"] > cfg().rfm.dormant_recency_days)
+            & (self.rfm["m_rank"] <= cfg().rfm.dormant_monetary_percentile)
         ]
         if dormant.empty:
             return ""
         avg_recency = float(dormant["recency_days"].mean())
         avg_frequency = float(dormant["frequency"].mean())
         total_revenue = float(dormant["monetary"].sum())
-        revenue_share = total_revenue / self.total_monetary if self.total_monetary else 0.0
+        revenue_share = (
+            total_revenue / self.total_monetary if self.total_monetary else 0.0
+        )
         top_segment = (
             str(dormant["segment"].value_counts().idxmax())
             if dormant["segment"].notna().any()
             else "未分类"
         )
         cards = [
-            ("沉睡客户数", self._fmt_int(len(dormant)), "recency > 90 且 M 前 5%"),
+            (
+                "沉睡客户数",
+                self._fmt_int(len(dormant)),
+                f"recency > {cfg().rfm.dormant_recency_days} 且 M 前 {cfg().rfm.dormant_monetary_percentile:.0%}",
+            ),
             ("平均沉睡天数", self._fmt_int(int(avg_recency)), "从最近一次交易计算"),
             ("平均购买频次", self._fmt_decimal(avg_frequency, 1), "历史订单数"),
-            ("沉睡客户收入", self._fmt_money(total_revenue), f"占总收入 {revenue_share:.1%}"),
+            (
+                "沉睡客户收入",
+                self._fmt_money(total_revenue),
+                f"占总收入 {revenue_share:.1%}",
+            ),
         ]
         cards_html = "".join(
             f"""
@@ -1149,7 +1211,7 @@ class RFMReport:
 """
 
     def _render_top_customers(self) -> str:
-        top = self.rfm.nlargest(10, "monetary")[
+        top = self.rfm.nlargest(TOP_CUSTOMERS_COUNT, "monetary")[
             ["customer_id", "recency_days", "frequency", "monetary", "segment"]
         ]
         rows = []
@@ -1172,7 +1234,7 @@ class RFMReport:
   <div class="panel-header">
     <div>
       <p class="section-kicker">Top Customers</p>
-      <h2>Top 10 高价值客户</h2>
+      <h2>Top {TOP_CUSTOMERS_COUNT} 高价值客户</h2>
     </div>
     <span class="panel-note">按历史消费金额排序</span>
   </div>
@@ -1187,7 +1249,7 @@ class RFMReport:
           <th>客户分层</th>
         </tr>
       </thead>
-      <tbody>{''.join(rows)}</tbody>
+      <tbody>{"".join(rows)}</tbody>
     </table>
   </div>
 </section>
@@ -1214,9 +1276,9 @@ class RFMReport:
   <div class="panel-header">
     <div>
       <p class="section-kicker">Win-back List</p>
-      <h2>Top 5 高价值沉睡客户</h2>
+      <h2>高价值沉睡客户名单</h2>
     </div>
-    <span class="panel-note">沉睡超过 90 天，且金额排名前 5%</span>
+    <span class="panel-note">沉睡超过 {cfg().rfm.dormant_recency_days} 天，且金额排名前 {cfg().rfm.dormant_monetary_percentile:.0%}</span>
   </div>
   <div class="table-wrap">
     <table>
@@ -1230,7 +1292,7 @@ class RFMReport:
           <th>建议动作</th>
         </tr>
       </thead>
-      <tbody>{''.join(rows)}</tbody>
+      <tbody>{"".join(rows)}</tbody>
     </table>
   </div>
 </section>
@@ -1279,11 +1341,11 @@ class RFMReport:
         return f"¥{value:,.0f}"
 
 
-def main() -> None:
+def run_report() -> None:
     report = RFMReport()
     output = report.save()
     print(f"RFM report generated: {output.resolve()}")
 
 
 if __name__ == "__main__":
-    main()
+    run_report()
