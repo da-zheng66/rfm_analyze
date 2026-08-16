@@ -1,0 +1,42 @@
+# Online Retail RFM 分析配置
+
+[paths]
+raw_dir = "data/raw"
+interim_dir = "data/interim"
+processed_dir = "data/processed"
+output_dir = "outputs"
+
+[files]
+raw = "Online_Retail.csv"
+cleaned = "cleaned_online_retail.parquet"
+quality_report = "数据质量报告.csv"
+rfm = "rfm.csv"
+rfm_stats = "rfm_stats.csv"
+top_dormant = "top5_dormant.csv"
+html_report = "rfm_report.html"
+png_report = "rfm_report.png"
+
+[dataset]
+slug = "tunguz/online-retail"
+encoding = "latin1"
+date_format = "%m/%d/%y %H:%M"
+index_columns = ["InvoiceNo", "StockCode"]
+
+[cleaning]
+valid_stock_code_pattern = "^[0-9]+[A-Z]*$"
+drop_duplicates = true
+
+[rfm]
+tiles = 6
+base_date = "2011-12-10"
+r_threshold = 3
+f_threshold = 3
+m_threshold = 5
+dormant_recency_days = 90
+dormant_monetary_percentile = 0.05
+
+[report]
+scatter_sample_size = 650
+scatter_random_state = 42
+histogram_bins = 10
+png_scale = 2.0
